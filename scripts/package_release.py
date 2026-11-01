@@ -29,7 +29,7 @@ FILES = (
     'examples/har-study/evidence/validation-comparison.csv', 'examples/har-study/evidence/inference-cost.csv',
     'examples/har-study/evidence/test-results.png', 'examples/har-study/evidence/confusion-matrices.png',
     'start.py', 'start.bat', 'start.command',
-    'backend/__init__.py', 'backend/server.py', 'backend/store.py', 'backend/layout.py', 'backend/seed.py', 'backend/recovery.py', 'backend/work_sessions.py', 'backend/external_tasks.py', 'backend/host_usage.py', 'backend/execution_usage.py', 'backend/codex_usage.py',
+    'backend/__init__.py', 'backend/server.py', 'backend/store.py', 'backend/layout.py', 'backend/seed.py', 'backend/recovery.py', 'backend/work_sessions.py', 'backend/external_tasks.py', 'backend/question_origins.py', 'backend/host_usage.py', 'backend/execution_usage.py', 'backend/codex_usage.py',
     'skills/exp-observer/SKILL.md',
     'skills/exp-observer/agents/openai.yaml',
     'skills/exp-observer/references/records.md',

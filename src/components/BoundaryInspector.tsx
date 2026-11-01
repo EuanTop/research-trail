@@ -41,10 +41,10 @@ export function BoundaryInspector({
             </button>
             <div className="boundary-relation">
               <ArrowRight size={13} />
-              {edge.label ||
-                (relations[edge.relation]
-                  ? t(relations[edge.relation])
-                  : edge.relation)}
+              {relations[edge.relation]
+                ? t(relations[edge.relation])
+                : edge.relation}
+              {edge.label && <span>{edge.label}</span>}
             </div>
             <button
               className="boundary-endpoint"

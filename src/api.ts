@@ -54,6 +54,7 @@ export type DeliveryItem = {
   attempts: number;
   lastAttemptAt?: string | null;
   nextAttemptAt?: string | null;
+  retryable?: boolean;
   waitingFor?: { taskId: string; nodeId: string; title: string }[];
   lastError: { code: string; message: string } | null;
 };

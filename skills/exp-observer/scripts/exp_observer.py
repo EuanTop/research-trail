@@ -18,7 +18,7 @@ from urllib.parse import quote, urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener, urlopen
 from uuid import uuid4
 
-CLIENT_VERSION = '0.1.11'
+CLIENT_VERSION = '0.1.12'
 MAX_WRITE_BODY = 2 * 1024 * 1024
 MAX_BATCH_BODY = 8 * 1024 * 1024
 
@@ -156,6 +156,13 @@ def parser():
     event.add_argument('--artifact', action='append', default=[])
     event.add_argument('--request-id', help='Stable retry identity; reuse for delivery retries of this same event')
     event.set_defaults(node=None)
+    for origin_command in (record, event):
+        origin_command.add_argument('--origin-type', help='Why this question was raised: goal, finding, literature, user, independent or a custom type')
+        origin_command.add_argument('--origin-node', action='append', help='Exact source node ID/title; repeat for several sources')
+        origin_command.add_argument('--origin-artifact', action='append', help='Retained source artifact ID; repeat as needed')
+        origin_command.add_argument('--origin-url', help='Original http(s) source URL')
+        origin_command.add_argument('--origin-reason', help='Brief reason for raising the question')
+        origin_command.add_argument('--origin-retrospective', action='store_true', help='Declare that this origin was reconstructed later')
     sync = commands.add_parser('sync', help='Retry local pending records without executing experiments')
     sync.add_argument('--project', help='Only sync this project')
     status_command = commands.add_parser('status', help='Read local delivery receipts and research-review hints, without HTTP or polling')
@@ -581,7 +588,7 @@ def local_context(outbox, client, project_id, node_id=None):
                 for index, operation in enumerate(task.get('operations', [])):
                     data = operation.get('data', {})
                     detail = {'op': operation['op'], **{key: data[key] for key in
-                              ('id', 'title', 'kind', 'status', 'nodeId', 'source', 'target', 'parentId', 'isContainer', 'collapsed', 'nextAction', 'pauseReason', 'resumeWhen') if key in data}}
+                              ('id', 'title', 'kind', 'status', 'nodeId', 'source', 'target', 'parentId', 'isContainer', 'collapsed', 'nextAction', 'pauseReason', 'resumeWhen', 'questionOrigin') if key in data}}
                     for field, limit in (('summary', 512), ('conclusion', 512)):
                         if isinstance(data.get(field), str):
                             detail[field] = data[field][:limit]
@@ -592,7 +599,7 @@ def local_context(outbox, client, project_id, node_id=None):
                     if operation['op'] in ('node.add', 'node.update', 'node.ensure') and isinstance(data.get('id'), str):
                         if operation['op'] == 'node.ensure' and data.get('referenceOnly'):
                             continue
-                        fields = ('id', 'title', 'kind', 'status', 'parentId', 'isContainer', 'collapsed', 'summary', 'conclusion', 'notes', 'importance', 'importanceReason', 'nextAction', 'pauseReason', 'resumeWhen')
+                        fields = ('id', 'title', 'kind', 'status', 'parentId', 'isContainer', 'collapsed', 'summary', 'conclusion', 'notes', 'importance', 'importanceReason', 'nextAction', 'pauseReason', 'resumeWhen', 'questionOrigin')
                         node_updates.append(((task.get('capturedAt') or task.get('startedAt') or '', path.name, index),
                                              operation['op'], {key: data[key] for key in fields if key in data}))
                     record['operations'].append(detail)
@@ -624,7 +631,7 @@ def local_context(outbox, client, project_id, node_id=None):
     for key, node in nodes.items():
         if node_id and key not in scoped:
             continue
-        detail = {field: node[field] for field in ('id', 'title', 'kind', 'status', 'parentId', 'isContainer', 'collapsed', 'nextAction', 'pauseReason', 'resumeWhen') if field in node}
+        detail = {field: node[field] for field in ('id', 'title', 'kind', 'status', 'parentId', 'isContainer', 'collapsed', 'nextAction', 'pauseReason', 'resumeWhen', 'questionOrigin') if field in node}
         for field in ('summary', 'conclusion'):
             if isinstance(node.get(field), str):
                 detail[field] = node[field][:512]
@@ -947,8 +954,17 @@ def delivery_attempt(path, task):
 
 
 def delivery_succeeded(path, task):
-    task['delivery'] = {**task.get('delivery', {}), 'lastError': None, 'nextAttemptAt': None, 'syncedAt': stamp()}
+    task['delivery'] = {**task.get('delivery', {}), 'lastError': None, 'nextAttemptAt': None, 'retryable': True, 'syncedAt': stamp()}
     save_task(path, task)
+
+
+def delivery_retryable(code):
+    if code in ('invalid_reference', 'unresolved_reference', 'not_found'):
+        return True
+    return not (code.startswith('invalid_') or code in (
+        'external_task_conflict', 'body_too_large', 'queue_identity_conflict',
+        'path_not_allowed', 'registration_required', 'conflict', 'self_edge',
+        'duplicate_usage_ref', 'duplicate_id'))
 
 
 def delivery_failed(path, task, exc, warnings):
@@ -957,12 +973,14 @@ def delivery_failed(path, task, exc, warnings):
     delivery['lastError'] = {'code': getattr(exc, 'code', None) or ('io_error' if isinstance(exc, OSError) else 'delivery_error'),
                              'message': str(exc)}
     delivery['lastFailureAt'] = stamp()
+    delivery['retryable'] = delivery_retryable(delivery['lastError']['code'])
     # Permit one immediate transport recovery after recording offline; every
     # repeated failure backs off, including missing nodes and rejected updates.
     attempts = delivery.get('attempts', 1)
     first_transport = attempts == 1 and delivery['lastError']['code'] in ('unavailable', 'delivery_error', 'io_error')
     delay = 0 if first_transport else min(60, 2 ** min(attempts, 6))
-    delivery['nextAttemptAt'] = (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()
+    delivery['nextAttemptAt'] = ((datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()
+                                  if delivery['retryable'] else None)
     try:
         save_task(path, task)
     except OSError as save_error:
@@ -1086,6 +1104,53 @@ def capture_inputs(args):
     return notes, notes_error, metrics, metrics_warning
 
 
+def origin_intent(args):
+    """Absent options do not change historical retry fingerprints."""
+    result = {name: getattr(args, name) for name in
+              ('origin_type', 'origin_node', 'origin_artifact', 'origin_url', 'origin_reason', 'origin_retrospective')
+              if getattr(args, name, None) not in (None, False)}
+    if result:
+        if not isinstance(result.get('origin_type'), str) or not result['origin_type'].strip():
+            raise ClientError('Origin details require a nonempty --origin-type.')
+        if result['origin_type'].strip() == 'independent' and result.get('origin_node'):
+            raise ClientError('Independent exploration cannot declare source nodes.')
+        if result.get('origin_url') and urlsplit(result['origin_url']).scheme not in ('http', 'https'):
+            raise ClientError('Origin URL must use http or https.')
+    return result
+
+
+def question_origin(client, outbox, project_id, supplied, observed_at, *, exclude=None, default_reason=None):
+    if not supplied:
+        return None
+    result = {'type': supplied['origin_type'].strip(), 'recordedAt': observed_at}
+    if 'origin_reason' in supplied or default_reason is not None:
+        result['reason'] = supplied.get('origin_reason', default_reason)
+    if supplied.get('origin_artifact'):
+        result['artifactIds'] = list(dict.fromkeys(supplied['origin_artifact']))
+    if supplied.get('origin_url'):
+        result['url'] = supplied['origin_url']
+    if supplied.get('origin_retrospective'):
+        result['retrospective'] = True
+    if supplied.get('origin_node'):
+        known = semantic_nodes(client, outbox, project_id, exclude=exclude)
+        remote = None
+        resolved = []
+        for value in supplied['origin_node']:
+            reference = exact_reference(known, value)
+            if reference is None:
+                if remote is None:
+                    try:
+                        remote = client.project(project_id)['nodes']
+                    except ClientError:
+                        remote = []
+                reference = exact_reference(remote, value)
+            if reference is None and not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}', value):
+                raise ClientError('Origin source title was not found; use a retained node ID: ' + value)
+            resolved.append(reference['id'] if reference else value)
+        result['nodeIds'] = list(dict.fromkeys(resolved))
+    return result
+
+
 def record(client, args):
     if args.title is None and not args.node:
         raise ClientError('Creating a record requires a nonempty --title; --node updates may omit it.')
@@ -1099,6 +1164,8 @@ def record(client, args):
               'metricsFile': args.metrics_file}
     if args.container:
         intent['container'] = True
+    supplied_origin = origin_intent(args)
+    intent.update(supplied_origin)
     path, task = task_identity(client, args, intent)
     # Missing/unreadable source text must not prevent a stable request from
     # returning or delivering its existing frozen analysis. New work still fails.
@@ -1120,6 +1187,9 @@ def record(client, args):
         if metrics_warning:
             task['recordingWarnings'].append(metrics_warning)
         node = {'id': task['nodeId']}
+        origin = question_origin(client, path.parent, args.project, supplied_origin, at, exclude=path)
+        if origin is not None:
+            node['questionOrigin'] = origin
         if args.title is not None:
             node['title'] = args.title
         if args.conclusion is not None:
@@ -1308,6 +1378,8 @@ def event(client, args):
         intent['container'] = True
     if args.parent is not None:
         intent['parent'] = args.parent
+    supplied_origin = origin_intent(args)
+    intent.update(supplied_origin)
     path, task = task_identity(client, args, intent)
     if notes_error is not None and (not args.request_id or not path.is_file()):
         raise notes_error
@@ -1331,6 +1403,9 @@ def event(client, args):
         if args.reason is not None:
             question['summary'] = args.reason
         task.update(questionId=question['id'], eventType=event_type or 'question', capturedAt=stamp(), status='recorded')
+        origin = question_origin(client, path.parent, args.project, supplied_origin, task['capturedAt'], exclude=path, default_reason=args.reason)
+        if origin is not None:
+            question['questionOrigin'] = origin
         if metrics_warning:
             task['recordingWarnings'].append(metrics_warning)
         task['operations'] = parent_operations(parent) + [{'op': 'node.ensure', 'data': question}]
@@ -1356,6 +1431,8 @@ def event(client, args):
         if event_type:
             node.update(importance)
         update = {'id': question['id'], **(importance if not event_type else {})}
+        if origin is not None:
+            update['questionOrigin'] = origin
         if args.container or parent:
             update['isContainer'] = True
         if parent:
@@ -1430,15 +1507,27 @@ def queue_dependency_map(items):
             if not isinstance(op, dict) or not isinstance(op.get('data'), dict):
                 continue
             data = op['data']
-            if op.get('op') in ('node.add', 'run.add') or (op.get('op') == 'node.ensure' and not data.get('referenceOnly')):
+            if op.get('op') in ('node.add', 'run.add', 'artifact.add') or (op.get('op') == 'node.ensure' and not data.get('referenceOnly')):
                 if isinstance(data.get('id'), str):
                     created.add(data['id'])
             if op.get('op') in ('node.update', 'run.update') or (op.get('op') == 'node.ensure' and data.get('referenceOnly')):
                 if isinstance(data.get('id'), str):
                     refs.add(data['id'])
-            for key in ('nodeId', 'parentId', 'source', 'target'):
+            for key in ('nodeId', 'parentId', 'source', 'target', 'runId', 'supersedes'):
                 if isinstance(data.get(key), str):
                     refs.add(data[key])
+            for key in ('runIds', 'artifactIds'):
+                if isinstance(data.get(key), list):
+                    refs.update(value for value in data[key] if isinstance(value, str))
+            origin = data.get('questionOrigin')
+            if isinstance(origin, dict):
+                for key in ('nodeIds', 'artifactIds'):
+                    if isinstance(origin.get(key), list):
+                        refs.update(value for value in origin[key] if isinstance(value, str))
+        artifacts = receipt.get('artifacts')
+        for artifact in artifacts if isinstance(artifacts, list) else []:
+            if isinstance(artifact, dict) and isinstance(artifact.get('id'), str):
+                created.add(artifact['id'])
         focus_body = receipt.get('focus')
         if receipt.get('kind') == 'focus' and isinstance(focus_body, dict) and focus_body.get('action') != 'end':
             node_ids = focus_body.get('nodeIds')

@@ -35,6 +35,7 @@ import { Badge, date, IconButton, kindIcon } from "./Primitives";
 import { NodeUsagePanel } from "./NodeUsagePanel";
 import { ResearchNotes } from "./ResearchMarkdown";
 import { MetricDetails } from "./MetricDetails";
+import { QuestionOriginPanel } from "./QuestionOrigin";
 import { nodePresentation } from "../node-presentation";
 import { ProjectHostUsage } from "./HostUsage";
 import {
@@ -365,6 +366,16 @@ export function NodeInspector({
           />
         ) : tab === "overview" ? (
           <>
+            {node.kind === "question" && (
+              <QuestionOriginPanel
+                node={node}
+                project={project}
+                busy={busy || editing}
+                mutate={mutate}
+                onSelect={onSelect}
+                onArtifact={onArtifact}
+              />
+            )}
             {editing ? (
               <div className="edit-fields">
                 <label>
@@ -588,13 +599,23 @@ export function NodeInspector({
                     key={e.id}
                     onClick={() => other && onSelect(other.id)}
                   >
-                    <GitBranch size={13} />
-                    <span>{other?.title}</span>
+                    <ArrowRight
+                      size={13}
+                      style={
+                        e.target === node.id
+                          ? { transform: "rotate(180deg)" }
+                          : undefined
+                      }
+                    />
+                    <span>
+                      {other?.title}
+                      <small>{e.label}</small>
+                    </span>
                     <small>
-                      {e.label ||
-                        (relations[e.relation]
-                          ? t(relations[e.relation])
-                          : e.relation)}
+                      {t(e.target === node.id ? "来自" : "指向")} ·{" "}
+                      {relations[e.relation]
+                        ? t(relations[e.relation])
+                        : e.relation}
                     </small>
                   </button>
                 );

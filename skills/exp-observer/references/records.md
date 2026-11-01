@@ -35,6 +35,19 @@ ANALYSIS
 
 Notes are frozen metadata in the queued operation; they are not automatically attached as evidence. Omit notes to preserve the previous value, or supply an empty value to clear it. Reusing a request ID with changed notes or type is a conflict; use a new request ID for a deliberate revision. Background recovery and `sync` use the frozen notes without rereading the source analysis file. Repeating `event` or `record` validates the supplied intent: if its notes file is missing or unreadable, the same explicit request ID, file path and other arguments can reuse the frozen analysis; a readable file with changed text remains a conflict. Missing notes cannot create a new record. Keep scripts, original measurements and images as local evidence. Metrics retain their original JSON structure, including nested objects, arrays, empty containers and nulls. Non-object roots use `result` while the original file is preserved.
 
+## Question origins
+
+Question provenance is optional native metadata, distinct from containment, support and recording order. Set it while opening a question or editing an existing question:
+
+```sh
+python3 <skill>/scripts/exp_observer.py event --project ID --question "Can the public implementation support a fair comparison?" --parent "Fair comparison" --origin-type goal --origin-node "Fair comparison" --origin-reason "Check whether the required baseline can actually be reproduced"
+python3 <skill>/scripts/exp_observer.py record --project ID --node QUESTION_ID --origin-type finding --origin-node FINDING_ID --origin-reason "This observed failure raises the follow-up question" --origin-retrospective
+```
+
+`--origin-type` accepts a custom nonblank type; suggested types are goal, finding, literature, user and independent. Repeat `--origin-node` for several exact retained node IDs/titles, and `--origin-artifact` for original evidence IDs; `--origin-url` can reference an HTTP(S) source. A brief `--origin-reason` explains the connection; an explicitly supplied origin may reuse `--reason` when no separate origin reason is provided. Origin fields attach to the question even if that call also creates a finding.
+
+The client freezes `questionOrigin` and its `recordedAt` before delivery. `--origin-retrospective` distinguishes a later evidence-based reconstruction from a contemporary record. Omitting these options preserves previous metadata and historical request fingerprints. Unresolved explicit IDs wait for registration; missing/ambiguous natural titles do not become new nodes. Declaring an origin does not fabricate semantic edges. Conversely, parentage, any incoming support link or creation order does not automatically establish why a question was raised. Independent exploration is an explicit declaration, not a guess from missing links. Legacy absence stays “Source not recorded”; a source removed later stays unresolved with its original identity.
+
 ## Conversation focus
 
 An experiment can have several independent conversation associations, each with one or more focused nodes:
@@ -60,7 +73,7 @@ python3 <skill>/scripts/exp_observer.py task start --project ID --node NODE_ID -
 python3 <skill>/scripts/exp_observer.py task update --project ID --run RETURNED_RUN_ID --status completed --finished-at 2026-10-29T02:15:00Z --request-id candidate-job-finish
 ```
 
-Use actual original timestamps and a stable task identity from the executor. `--status` accepts queued, running, paused, completed, failed and cancelled. A terminal state requires its actual finish timestamp; an optional `--duration-ms` must match the interval. Original start, owner and remote identity stay immutable. An update may attach measured JSON via `--metrics-file`; unreported GPU time, billing and Token usage stay unknown. A completed lifecycle does not decide the scientific question. Offline registration reuses frozen operations and never resubmits the remote job.
+Use actual original timestamps and a stable task identity from the executor. `--status` accepts queued, running, paused, completed, failed and cancelled. A terminal state requires its actual finish timestamp; an optional `--duration-ms` retains the executor’s reported finite, nonnegative duration. The UI separately derives elapsed time from wall-clock start/finish, so rounding, clock adjustment or a different timer does not require rewriting either measurement. Original start, owner and remote identity stay immutable. A terminal task cannot restart or change its finish through an ordinary update; its reported duration may be corrected or enriched while retaining earlier values in history. An update may attach measured JSON via `--metrics-file`; unreported GPU time, billing and Token usage stay unknown. A completed lifecycle does not decide the scientific question. Offline registration reuses frozen operations and never resubmits the remote job.
 
 ## Availability and recovery
 

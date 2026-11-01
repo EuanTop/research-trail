@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   descendants,
+  boundaryRelations,
   effectiveAssessments,
   toCanvas,
   validateProject,
@@ -109,6 +110,58 @@ describe("nested research graph", () => {
     expect(canvas.nodes.map((n) => n.id)).toEqual(["a", "d"]);
     expect(canvas.edges[0].source).toBe("a");
     expect(canvas.edges[0].target).toBe("d");
+  });
+  it("exposes scope-parent relations without inventing links between its children", () => {
+    const edges = [
+      {
+        id: "goal-a",
+        source: "goal",
+        target: "a",
+        relation: "branches",
+        label: "Asset audit",
+      },
+      { id: "goal-b", source: "goal", target: "b", relation: "branches" },
+      { id: "a-finding", source: "a", target: "finding", relation: "leads_to" },
+      {
+        id: "external-goal",
+        source: "external",
+        target: "goal",
+        relation: "motivates",
+      },
+      {
+        id: "finding-outside",
+        source: "finding",
+        target: "external",
+        relation: "supports",
+      },
+    ];
+    const project = p(
+      [
+        n("goal"),
+        n("a", "goal"),
+        n("b", "goal"),
+        n("finding", "a"),
+        n("external"),
+      ],
+      edges,
+    );
+    const before = JSON.stringify(project);
+    const canvas = toCanvas(project, "goal", [], actions);
+    expect(canvas.nodes.map((node) => node.id)).toEqual(["a", "b"]);
+    expect(canvas.edges).toEqual([]);
+    expect(boundaryRelations(project, "goal").map((edge) => edge.id)).toEqual([
+      "goal-a",
+      "goal-b",
+      "external-goal",
+      "finding-outside",
+    ]);
+    expect(boundaryRelations(project, "goal")[0]).toBe(edges[0]);
+    expect(boundaryRelations(project, "a").map((edge) => edge.id)).toEqual([
+      "goal-a",
+      "a-finding",
+      "finding-outside",
+    ]);
+    expect(JSON.stringify(project)).toBe(before);
   });
   it("shows descendants when entering a collapsed container", () => {
     const project = p([n("a", null, true), n("b", "a"), n("c", "b")]);

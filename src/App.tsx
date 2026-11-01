@@ -471,7 +471,7 @@ export default function App() {
               .sort((a, b) => a.position.y - b.position.y);
             const firstRows = [
               ...new Set(cards.map((n) => n.position.y)),
-            ].slice(0, cards.length <= 8 ? undefined : 3);
+            ].slice(0, 3);
             void flow.fitView({
               nodes: cards.filter((n) => firstRows.includes(n.position.y)),
               padding: 0.18,

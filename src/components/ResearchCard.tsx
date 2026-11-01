@@ -12,6 +12,7 @@ import {
 import { kinds, type CanvasData } from "../model";
 import type { NodePresentation } from "../node-presentation";
 import { formatDuration, formatTokens } from "../usage";
+import { originLabel } from "../question-origin";
 import { Badge, kindIcon } from "./Primitives";
 
 function UsageStats({ data }: { data: CanvasData }) {
@@ -23,12 +24,16 @@ function UsageStats({ data }: { data: CanvasData }) {
       : usage?.runMs != null
         ? t("执行 {duration}", { duration: formatDuration(usage.runMs) })
         : usage?.externalTaskMs != null
-          ? t("外部任务 {duration}", {
+          ? t("任务跨度 {duration}", {
               duration: formatDuration(usage.externalTaskMs),
             })
-          : usage?.externalTaskRunning
-            ? t("外部任务运行中")
-            : t("计时 —");
+          : usage?.externalReportedMs != null
+            ? t("执行器 {duration}", {
+                duration: formatDuration(usage.externalReportedMs),
+              })
+            : usage?.externalTaskRunning
+              ? t("外部任务运行中")
+              : t("计时 —");
   const tokens = `${usage?.tokenScope === "execution" ? t("执行 Token") : "Token"} ${formatTokens(usage?.totalTokens)}${usage?.totalTokens != null && usage.tokensPartial ? "+" : ""}`;
   return (
     <>
@@ -145,6 +150,18 @@ export function ResearchCard({ data, selected }: NodeProps<Node<CanvasData>>) {
         className={`node-content ${presentation.conclusion ? "has-conclusion" : ""} ${hasPause ? "has-pause" : ""}`}
       >
         <h3 title={presentation.headline}>{presentation.headline}</h3>
+        {n.kind === "question" && !expanded && (
+          <button
+            className="node-origin-link nodrag"
+            title={t("查看问题来源")}
+            onClick={(event) => {
+              event.stopPropagation();
+              data.onInspect?.(n.id, "overview");
+            }}
+          >
+            {t("来源")} · {originLabel(n)}
+          </button>
+        )}
         {!expanded && hasPause && (
           <div className="node-pause-details">
             {presentation.pauseReason && (

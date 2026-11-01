@@ -154,6 +154,42 @@ describe("Agent delivery status", () => {
     expect(html).not.toContain("node-earlier");
   });
 
+  it("distinguishes permanent repair from timed retry while retaining a manual recheck", () => {
+    const html = renderToStaticMarkup(
+      createElement(DeliveryDetails, {
+        snapshot: snapshot({
+          state: "blocked",
+          blockedCount: 1,
+          items: [
+            {
+              taskId: "bad-origin",
+              title: "Source reference",
+              state: "blocked",
+              attempts: 2,
+              retryable: false,
+              nextAttemptAt: "2026-10-29T10:00:00Z",
+              lastError: {
+                code: "reference_unresolved",
+                message: "Source missing",
+              },
+            },
+          ],
+        }),
+        fetchError: "",
+        workspaceError: "",
+        busy: false,
+        retrying: null,
+        retryError: "",
+        onRetry() {},
+        onRefresh() {},
+      }),
+    );
+    expect(html).toContain("Needs repair");
+    expect(html).toContain("Check delivery again");
+    expect(html).toContain("Source missing");
+    expect(html).not.toContain("Next retry");
+  });
+
   it("shows current check, save and retry errors instead of a success confirmation", () => {
     const html = renderToStaticMarkup(
       createElement(DeliveryDetails, {

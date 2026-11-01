@@ -370,6 +370,8 @@ class Recovery:
                             self.acknowledged[str(path)] = signature
                         else:
                             delivery = task.get('delivery') if isinstance(task.get('delivery'), dict) else {}
+                            if task['state'] == 'ready' and delivery.get('retryable') is False:
+                                continue
                             after = self.cli.local_timestamp(delivery.get('nextAttemptAt'))
                             if task['state'] == 'ready' and after is not None and after > time.time():
                                 continue
@@ -510,6 +512,35 @@ class Recovery:
         result.update(available=available, discoveryComplete=complete)
         dependencies = self.cli.queue_dependency_map(receipts)
         by_path = {item[0]: item[2] for item in receipts}
+        node_titles = {}
+        if self.store is not None:
+            from .store import StoreError
+            try:
+                node_titles.update({node['id']: node['title'] for node in self.store.get_project(project_id)['nodes']
+                                    if isinstance(node.get('title'), str) and node['title'].strip()})
+            except (StoreError, OSError, KeyError, TypeError):
+                pass
+        def receipt_operations(receipt):
+            operations = receipt.get('operations')
+            return [operation for operation in operations
+                    if isinstance(operation, dict) and isinstance(operation.get('data'), dict)] if isinstance(operations, list) else []
+        for _, _, receipt in sorted(receipts, key=lambda item: item[2].get('capturedAt') or ''):
+            for operation in receipt_operations(receipt):
+                data = operation['data']
+                if operation.get('op') in ('node.add', 'node.ensure', 'node.update') and isinstance(data.get('title'), str) and data['title'].strip():
+                    node_titles[data.get('id')] = data['title']
+        def readable_title(receipt):
+            intent = receipt.get('intent') if isinstance(receipt.get('intent'), dict) else {}
+            metadata = receipt.get('project') if isinstance(receipt.get('project'), dict) else {}
+            node_id = receipt.get('questionId') or receipt.get('nodeId')
+            values = [intent.get(key) for key in ('title', 'finding', 'correction', 'direction')]
+            values.extend((node_titles.get(node_id), metadata.get('name')))
+            question = intent.get('question')
+            if isinstance(question, str) and question not in (node_id, receipt.get('nodeId')):
+                values.append(question)
+            values.extend(operation['data'].get('title') for operation in receipt_operations(receipt)
+                          if operation.get('op') == 'run.add')
+            return next((value for value in values if isinstance(value, str) and value.strip()), 'Research record')
         for path, root, task in receipts:
             if task['state'] == 'synced':
                 result['syncedCount'] += 1
@@ -522,12 +553,8 @@ class Recovery:
             lock = path.with_suffix('.lock')
             live = scoped_path(lock, root) and capture_lock_held(lock)
             state = ('pending' if live else 'interrupted') if task['state'] != 'ready' else ('blocked' if error else 'pending')
-            intent = task.get('intent') if isinstance(task.get('intent'), dict) else {}
-            metadata = task.get('project') if isinstance(task.get('project'), dict) else {}
             attempts = delivery.get('attempts', 0)
-            title = next((value for value in (intent.get('title'), intent.get('finding'), intent.get('correction'),
-                                              intent.get('direction'), intent.get('question'), metadata.get('name'), task.get('nodeId'))
-                          if isinstance(value, str) and value.strip()), 'Queued record')
+            title = readable_title(task)
             result[state + 'Count'] += 1
             result['items'].append({'taskId': task.get('taskId') if isinstance(task.get('taskId'), str) and task['taskId'] else path.stem,
                 'requestId': task.get('requestId') if isinstance(task.get('requestId'), str) else None,
@@ -537,9 +564,10 @@ class Recovery:
                 'lastAttemptAt': delivery.get('lastAttemptAt') if isinstance(delivery.get('lastAttemptAt'), str) else None,
                 'lastError': error,
                 'nextAttemptAt': delivery.get('nextAttemptAt'),
+                'retryable': delivery.get('retryable'),
                 'waitingFor': [{'taskId': by_path[dependency].get('taskId', dependency.stem),
                                 'nodeId': by_path[dependency].get('nodeId'),
-                                'title': by_path[dependency].get('intent', {}).get('title') or 'Queued record'}
+                                'title': readable_title(by_path[dependency])}
                                for dependency in sorted(dependencies.get(path, ())) if by_path[dependency]['state'] != 'synced']})
         if result['blockedCount'] or result['interruptedCount']:
             result['state'] = 'blocked'

@@ -16,6 +16,7 @@ export type NodeUsage = {
   commandRunCount: number;
   externalTaskCount: number;
   externalTaskMs: number | null;
+  externalReportedMs: number | null;
   externalTaskRunning: boolean;
   inputTokens: number | null;
   outputTokens: number | null;
@@ -252,6 +253,7 @@ export function getNodeUsage(project: Project, nodeId: string): NodeUsage {
           : null;
       }),
     ),
+    externalReportedMs: sumKnown(externalTasks.map((run) => run.durationMs)),
     externalTaskRunning: externalTasks.some((run) =>
       ["queued", "running"].includes(run.status),
     ),

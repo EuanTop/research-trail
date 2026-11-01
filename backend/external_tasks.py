@@ -41,9 +41,11 @@ def validate(run):
         elapsed = (_time(finished) - started).total_seconds() * 1000
         if elapsed < 0:
             raise StoreError('External task finish must not precede its start.', 'invalid_external_task')
-        if duration is not None and (type(duration) not in (int, float) or not math.isfinite(duration) or
-                                     duration < 0 or abs(duration - elapsed) > 1):
-            raise StoreError('External task duration must match its reported start and finish.', 'invalid_external_task')
+        # The executor may measure duration with a monotonic timer while these
+        # timestamps use a wall clock. Preserve both measurements: drift or
+        # timestamp precision is not evidence that the reported work is invalid.
+        if duration is not None and (type(duration) not in (int, float) or not math.isfinite(duration) or duration < 0):
+            raise StoreError('External task reported duration must be a finite nonnegative number.', 'invalid_external_task')
     elif finished is not None or duration is not None:
         raise StoreError('An unfinished external task cannot have a finish time or duration.', 'invalid_external_task')
 
@@ -57,6 +59,7 @@ def validate_update(existing, update):
     before, after = existing['configuration'], proposed['configuration']
     if any(before.get(key) != after.get(key) for key in IDENTITY_FIELDS):
         raise StoreError('External task remote identity is immutable.', 'external_task_conflict', 409)
-    if existing['status'] in TERMINAL and (any(proposed.get(key) != existing.get(key) for key in ('status', 'finishedAt')) or
-            existing.get('durationMs') is not None and proposed.get('durationMs') != existing['durationMs']):
+    # Reported duration is a measurement which may be enriched or corrected,
+    # just like metrics; the normal revision history retains its previous value.
+    if existing['status'] in TERMINAL and any(proposed.get(key) != existing.get(key) for key in ('status', 'finishedAt')):
         raise StoreError('A finished external task cannot be restarted; record a new task.', 'external_task_conflict', 409)

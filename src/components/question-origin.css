@@ -1,0 +1,106 @@
+.question-origin {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 12px;
+  margin: 0 0 18px;
+  font-size: 12px;
+}
+.origin-heading,
+.origin-heading strong,
+.origin-state {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.origin-heading {
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.origin-heading .text-button {
+  font-size: 11px;
+}
+.origin-state {
+  color: var(--muted);
+}
+.origin-state small {
+  border: 1px solid var(--border);
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+.question-origin p {
+  line-height: 1.65;
+  margin: 8px 0;
+  white-space: pre-wrap;
+}
+.origin-source {
+  display: flex;
+  gap: 6px;
+  align-items: start;
+  text-align: left;
+  color: var(--accent);
+  padding: 7px 0;
+  width: 100%;
+}
+.origin-source svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.origin-time,
+.origin-unresolved {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+  margin-top: 7px;
+}
+.question-origin a {
+  display: flex;
+  align-items: center;
+  color: var(--accent);
+  gap: 5px;
+  margin: 7px 0;
+}
+.origin-editor label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 10px;
+}
+.origin-editor input:not([type="checkbox"]),
+.origin-editor textarea,
+.origin-editor select {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 5px;
+  padding: 7px;
+  font: inherit;
+}
+.origin-editor .origin-checkbox {
+  flex-direction: row;
+  align-items: center;
+}
+.node-origin-link {
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  margin: 7px 0 0;
+  max-width: 100%;
+}
+.boundary-relation {
+  flex-wrap: wrap;
+}
+.boundary-relation > span {
+  flex-basis: 100%;
+  color: var(--muted);
+}
+.related-row > span > small {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  margin-top: 3px;
+}

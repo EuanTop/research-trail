@@ -45,7 +45,7 @@ class ExternalTaskTests(unittest.TestCase):
         bad_updates = [
             {'status': 'completed'}, {'status': 'running', 'durationMs': 1},
             {'status': 'failed', 'finishedAt': '2026-10-28T01:00:00Z'},
-            {'status': 'completed', 'finishedAt': '2026-10-29T01:10:00Z', 'durationMs': 10},
+            {'status': 'completed', 'finishedAt': '2026-10-29T01:10:00Z', 'durationMs': -1},
             {'startedAt': '2026-10-29T01:01:00Z'}, {'nodeId': 'finding'},
             {'configuration': self.remote()['configuration'] | {'taskRef': 'different'}},
             {'configuration': {}},
@@ -68,6 +68,47 @@ class ExternalTaskTests(unittest.TestCase):
                 run[field] = {'externalTask': True}
             with self.assertRaises(StoreError):
                 self.apply([{'op': 'run.add', 'data': run}])
+
+    def test_reported_duration_and_wall_interval_are_independent_preserved_measurements(self):
+        operation = {'op': 'run.add', 'data': self.remote(status='completed',
+            finishedAt='2026-10-29T02:00:00Z', durationMs=3600095.0)}
+        frozen = copy.deepcopy(operation)
+        result = self.apply([operation], requestId='original-executor-report')
+        run = result['runs'][0]
+        self.assertEqual(run['durationMs'], 3600095.0)
+        self.assertEqual(run['finishedAt'], '2026-10-29T02:00:00Z')
+        self.assertEqual(operation, frozen)
+        self.assertEqual(self.apply([operation], requestId='original-executor-report'), result)
+        with self.store._transaction() as db:
+            fingerprint = db.execute('SELECT fingerprint FROM versions WHERE project_id=? AND request_id=?',
+                                     ('study', 'original-executor-report')).fetchone()[0]
+        self.assertEqual(fingerprint, hashlib.sha256(canonical([frozen]).encode()).hexdigest())
+
+    def test_terminal_reported_duration_can_be_corrected_without_restarting_the_job(self):
+        original = self.apply([{'op': 'run.add', 'data': self.remote(status='completed',
+            finishedAt='2026-10-29T01:10:00Z', durationMs=600000)}])
+        update = {'op': 'run.update', 'data': {'id': 'remote-run', 'status': 'completed',
+            'finishedAt': '2026-10-29T01:10:00Z', 'durationMs': 600052.0438745576,
+            'metrics': {'executorSeconds': 600.0520438745576}}}
+        corrected = self.apply([update], requestId='retained-terminal-report')
+        self.assertEqual(corrected['runs'][0]['durationMs'], 600052.0438745576)
+        self.assertEqual(corrected['runs'][0]['metrics'], {'executorSeconds': 600.0520438745576})
+        self.assertEqual(self.apply([update], requestId='retained-terminal-report'), corrected)
+        with self.store._transaction() as db:
+            retained = self.store._revision(db, 'study', original['revision'])
+        self.assertEqual(retained['runs'][0]['durationMs'], 600000)
+        for change in ({'status': 'running', 'finishedAt': None},
+                       {'finishedAt': '2026-10-29T01:11:00Z'}):
+            with self.subTest(change=change), self.assertRaises(StoreError):
+                self.apply([{'op': 'run.update', 'data': {'id': 'remote-run', **change}}])
+
+    def test_reported_zero_is_valid_but_invalid_counters_remain_invalid(self):
+        self.apply([{'op': 'run.add', 'data': self.remote(status='completed',
+            finishedAt='2026-10-29T01:10:00Z', durationMs=0)}])
+        self.assertEqual(self.store.get_project('study')['runs'][0]['durationMs'], 0)
+        for value in (-1, True, float('nan'), float('inf'), '600000'):
+            with self.subTest(value=value), self.assertRaises(StoreError):
+                self.apply([{'op': 'run.update', 'data': {'id': 'remote-run', 'durationMs': value}}])
 
     def test_legacy_run_sources_resolve_all_relations_and_keep_fingerprint(self):
         for index, relation in enumerate(('supports', 'related_to', 'leads_to', 'revises', 'custom.relation')):

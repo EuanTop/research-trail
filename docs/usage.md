@@ -26,6 +26,12 @@ An open question stays static. Flowing outlines indicate a locally observed comm
 
 *Inspect recorded configuration and execution metrics side by side. Research result comparisons can also include nested metrics and assessments. [Open this example workspace](../examples/har-study/README.md).*
 
+## Trace a question's origin
+
+A question's **Source** action distinguishes a recorded source, declared independent exploration and missing provenance. Details retain source nodes or evidence, a brief reason, and whether the origin was reconstructed later. Sources in other levels remain navigable; a source deleted later retains its identity as unavailable. The origin editor accepts custom source types. The same parent container does not imply the same trigger or a causal chain.
+
+**External links** includes relationships between the current container and its members, as well as links to other subtrees. Relationship type and direction remain visible beside optional explanations. A new question can record its origin in the usual Skill call; no additional research phase is required.
+
 ## Give your agent the Skill
 
 Copy [`skills/exp-observer`](../skills/exp-observer) into your agent host's supported Skill directory, or give the agent the path to [`SKILL.md`](../skills/exp-observer/SKILL.md). The standalone client travels with the Skill; the research project does not need to import ExpObserver as a dependency.
@@ -100,7 +106,7 @@ The client must run to queue a record: result files alone are not queued. If the
 
 Before its final reply, the Skill reads `status --project my-study` once from the research directory. This uses local receipts without HTTP and reflects acknowledgments from background recovery. A past network error does not mean an acknowledged record is still pending. The returned scope and delivery state distinguish registered records, pending work and unknown status.
 
-The header's **Save & sync** details separate workspace saving from Agent record delivery. They show pending, blocked and interrupted records from connected workspaces, with retained failure reasons and safe retry actions. Retrying sends frozen records only; it never runs commands again. A retained node ID that cannot yet resolve stays queued rather than becoming a new question title. Legacy evidence links containing an exact run ID resolve to that run's owning node without changing the original queued request. Unknown or incomplete discovery is shown explicitly.
+The header's **Save & sync** details separate workspace saving from Agent record delivery. They show pending, blocked and interrupted records from connected workspaces, with retained failure reasons and safe retry actions. Deterministic validation failures pause automatic resubmission until repaired; transient failures back off. Retrying sends frozen records only; it never runs commands again. A retained node ID that cannot yet resolve stays queued rather than becoming a new question title. Legacy evidence links containing an exact run ID resolve to that run's owning node without changing the original queued request. Unknown or incomplete discovery is shown explicitly.
 
 Register existing files in bulk, inspect retained evidence, check the record or export the graph:
 
@@ -115,7 +121,7 @@ python3 skills/exp-observer/scripts/exp_observer.py export --project my-study --
 
 ### Report an existing remote job
 
-For detached training, `execute` measures the submission command, not the whole job. The Skill's `task start` / `task update` retains the original remote identity, actual start and finish timestamps, lifecycle status and measured results. Remote task time is displayed separately from captured command time; neither is a measure of complete research cost. See the [remote-task reference](../skills/exp-observer/references/records.md#remote-task-lifecycle) for commands.
+For detached training, `execute` measures the submission command, not the whole job. The Skill's `task start` / `task update` retains the original remote identity, actual start and finish timestamps, lifecycle status and measured results. Executor-reported remote duration and the elapsed interval between reported start/finish are retained and labeled separately from captured command time; neither is a measure of complete research cost. See the [remote-task reference](../skills/exp-observer/references/records.md#remote-task-lifecycle) for commands.
 
 ### Observe a research step
 

@@ -5,6 +5,7 @@ beforeEach(() => setLocale("zh-CN"));
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NodeHostUsage } from "./components/HostUsage";
+import { NodeUsagePanel } from "./components/NodeUsagePanel";
 import type {
   HostUsageRecord,
   Observation,
@@ -604,6 +605,42 @@ describe("external task time", () => {
       externalTaskRunning: true,
     });
   });
+});
+
+it("retains executor time independently of timestamp rounding and renders both measurements", () => {
+  setLocale("en");
+  const p = project(
+    [node("root")],
+    [],
+    [
+      {
+        ...run("remote", "root", {}),
+        configuration: { externalTask: true, taskRef: "job-1" },
+        status: "completed",
+        startedAt: "2026-10-29T08:00:00Z",
+        finishedAt: "2026-10-29T08:00:01Z",
+        durationMs: 905,
+      },
+    ],
+  );
+  const before = JSON.stringify(p);
+  const usage = getNodeUsage(p, "root");
+  expect(usage).toMatchObject({
+    externalTaskMs: 1000,
+    externalReportedMs: 905,
+    runMs: null,
+  });
+  const html = renderToStaticMarkup(
+    createElement(NodeUsagePanel, {
+      project: p,
+      node: p.nodes[0],
+      busy: false,
+      mutate: async () => true,
+    }),
+  );
+  expect(html).toContain("Task timestamp span 1 s");
+  expect(html).toContain("Executor-reported time 905 ms");
+  expect(JSON.stringify(p)).toBe(before);
 });
 
 describe("usage formatting", () => {

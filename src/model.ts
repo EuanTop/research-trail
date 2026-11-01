@@ -13,11 +13,22 @@ export type JsonValue =
   null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 export type Metrics = Record<string, JsonValue>;
 
+export type QuestionOrigin = {
+  type: string;
+  nodeIds?: string[];
+  artifactIds?: string[];
+  url?: string;
+  reason?: string;
+  retrospective?: boolean;
+  recordedAt?: string;
+  [key: string]: unknown;
+};
 export type ResearchNode = {
   id: string;
   title: string;
   kind: string;
   status: string;
+  questionOrigin?: QuestionOrigin;
   importance?: "normal" | "critical";
   importanceReason?: string;
   pauseReason?: string;
@@ -138,6 +149,7 @@ export type Project = {
   artifacts: Artifact[];
   assessments: Assessment[];
   decisions: Decision[];
+  nodeAliases?: Record<string, string>;
   observations?: Observation[];
   usageRecords?: HostUsageRecord[];
   runtimeActivity?: { id: string; nodeId: string; source: string }[];
@@ -275,9 +287,13 @@ export function boundaryRelations(
   project: Project,
   scope: string,
 ): ResearchEdge[] {
-  const inside = new Set([scope, ...descendants(project.nodes, scope)]);
+  const members = new Set(descendants(project.nodes, scope));
+  const inside = new Set([scope, ...members]);
   return project.edges.filter(
-    (edge) => inside.has(edge.source) !== inside.has(edge.target),
+    (edge) =>
+      inside.has(edge.source) !== inside.has(edge.target) ||
+      (edge.source === scope && members.has(edge.target)) ||
+      (edge.target === scope && members.has(edge.source)),
   );
 }
 
@@ -321,7 +337,9 @@ export function toCanvas(
       (c) => visualParent(project.nodes, c)?.id === n.id,
     );
     let w = NODE_SIZE.w;
-    let h = estimateCardHeight(nodePresentation(project, n), w);
+    let h =
+      estimateCardHeight(nodePresentation(project, n), w) +
+      (n.kind === "question" ? 22 : 0);
     if (isVisualContainer(n) && children.length && !n.collapsed) {
       w = Math.max(
         330,

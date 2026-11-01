@@ -139,7 +139,13 @@ export function DeliveryDetails({
           >
             <div>
               <strong>{item.title || item.nodeId || item.taskId}</strong>
-              <span>{t(itemLabels[item.state])}</span>
+              <span>
+                {t(
+                  item.retryable === false
+                    ? "需要修复"
+                    : itemLabels[item.state],
+                )}
+              </span>
             </div>
             {!!item.waitingFor?.length && (
               <div className="delivery-dependencies">
@@ -168,7 +174,8 @@ export function DeliveryDetails({
             <div className="delivery-item-footer">
               <small>
                 {t("已尝试 {count} 次", { count: item.attempts })}
-                {item.nextAttemptAt &&
+                {item.retryable !== false &&
+                  item.nextAttemptAt &&
                   Number.isFinite(Date.parse(item.nextAttemptAt)) && (
                     <span>
                       {t("下次重试 {time}", {
@@ -183,7 +190,9 @@ export function DeliveryDetails({
                   disabled={retrying !== null}
                   onClick={() => onRetry(item.taskId)}
                 >
-                  {retrying === item.taskId ? t("重试中") : t("重试送达")}
+                  {retrying === item.taskId
+                    ? t("重试中")
+                    : t(item.retryable === false ? "重新检查送达" : "重试送达")}
                 </button>
               )}
             </div>

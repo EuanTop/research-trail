@@ -587,6 +587,8 @@ class Store:
                     if edge.get('relation') == 'supports' and isinstance(run_ids, list):
                         edge['runIds'] = run_ids + ([run['id']] if run['id'] not in run_ids else [])
             self._validate(p)
+            from .question_origins import validate_changed as validate_changed_origins
+            validate_changed_origins(previous, p)
             if geometry_changed:
                 self._place_nodes(p, unplaced)
                 self._validate(p)
@@ -624,6 +626,9 @@ class Store:
             d['id'] = aliases.get(d['id'], d['id'])
         if op == 'node.add' and isinstance(d.get('id'), str) and d['id'] in aliases:
             raise StoreError('This node was merged into existing work.', 'conflict', 409)
+        if op in ('node.add', 'node.update') and 'questionOrigin' in d:
+            from .question_origins import prepare as prepare_question_origin
+            prepare_question_origin(d['questionOrigin'], aliases, stamp)
         prefix = op.split('.', 1)[0] if isinstance(op, str) else ''
         fields = {'node': ('parentId',), 'edge': ('source', 'target'), 'run': ('nodeId',),
                   'artifact': ('nodeId',), 'decision': ('nodeId',), 'observation': ('nodeId',)}.get(prefix, ())
@@ -815,7 +820,9 @@ class Store:
                 raise StoreError(f'{collection} references must be an array.')
             for value in values:
                 ref(value, collection)
+        from .question_origins import validate_shape as validate_question_origin
         for node in p['nodes']:
+            validate_question_origin(node.get('questionOrigin'))
             if 'positionSource' in node and node['positionSource'] not in ('auto', 'manual'):
                 raise StoreError('Node positionSource must be auto or manual.')
             ref(node.get('parentId'), 'nodes', True)
@@ -1151,12 +1158,21 @@ class Store:
         run_ids = {r['id'] for r in runs}
         assessments = [a for a in p['assessments'] if a['runId'] in run_ids and a['id'] not in superseded]
         artifact_ids = {artifact_id for record in runs + decisions + assessments for artifact_id in record.get('artifactIds', [])}
+        for node in nodes:
+            origin = node.get('questionOrigin')
+            if isinstance(origin, dict):
+                artifact_ids.update(origin.get('artifactIds', []))
         artifacts = [a for a in p['artifacts'] if a['id'] in artifact_ids or a.get('nodeId') in selected or a.get('runId') in run_ids]
         boundary_ids = ({r['nodeId'] for r in runs} | {e[endpoint] for e in edges for endpoint in ('source', 'target')}) - selected
+        for node in nodes:
+            origin = node.get('questionOrigin')
+            if isinstance(origin, dict):
+                boundary_ids.update(p.get('nodeAliases', {}).get(key, key) for key in origin.get('nodeIds', []))
+        boundary_ids -= selected
         def compact(records, fields):
             return [{key: record.get(key) for key in fields} for record in records]
         return {'projectId': p['id'], 'name': p['name'], 'revision': p['revision'], 'description': p['description'],
-                'nodes': [{**{k: n.get(k) for k in ('id', 'title', 'kind', 'status', 'parentId', 'isContainer', 'collapsed', 'summary', 'conclusion', 'nextAction', 'importance', 'importanceReason', 'pauseReason', 'resumeWhen')},
+                'nodes': [{**{k: n.get(k) for k in ('id', 'title', 'kind', 'status', 'parentId', 'isContainer', 'collapsed', 'summary', 'conclusion', 'nextAction', 'importance', 'importanceReason', 'pauseReason', 'resumeWhen', 'questionOrigin')},
                            'hasNotes': bool(n.get('notes')),
                            **({'notes': n.get('notes', '')} if node_id else {})} for n in nodes],
                 'boundaryNodes': compact([n for n in p['nodes'] if n['id'] in boundary_ids], ('id', 'title', 'kind', 'status', 'parentId', 'isContainer', 'collapsed', 'importance')),

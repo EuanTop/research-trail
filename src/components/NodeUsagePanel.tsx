@@ -88,10 +88,17 @@ export function NodeUsagePanel({
             {t("{count} 个外部任务", { count: usage.externalTaskCount })}
           </span>
           <span>
-            {t("已记录任务耗时 {duration}", {
+            {t("任务起止跨度 {duration}", {
               duration: formatDuration(usage.externalTaskMs),
             })}
           </span>
+          {usage.externalReportedMs !== null && (
+            <span>
+              {t("执行器报告耗时 {duration}", {
+                duration: formatDuration(usage.externalReportedMs),
+              })}
+            </span>
+          )}
           {usage.externalTaskRunning && <span>{t("外部任务运行中")}</span>}
         </div>
       )}

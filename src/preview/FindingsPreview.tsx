@@ -153,6 +153,7 @@ const mockUsage: NodeUsage = {
   commandRunCount: 2,
   externalTaskCount: 0,
   externalTaskMs: null,
+  externalReportedMs: null,
   externalTaskRunning: false,
   inputTokens: 3_000,
   outputTokens: 600,
